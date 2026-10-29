@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Retro mood graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef1f6;
+    --surface: #ffffff;
+    --ink: #1f2a44;
+    --muted: #6b7489;
+    --grid: #d9dee8;
+    --zero: #9aa3b5;
+    --good: #2e9e73;
+    --bad: #d14b6a;
+    --line: #1f2a44;
+    --accent: #3d5afe;
+    --on-accent: #ffffff;
+    --danger: #c23a58;
+    --shadow: rgba(20, 30, 60, 0.18);
+    color-scheme: light;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121826;
+      --surface: #1a2233;
+      --ink: #e6eaf2;
+      --muted: #97a0b4;
+      --grid: #2a3448;
+      --zero: #56617a;
+      --good: #43c08f;
+      --bad: #ef6d8a;
+      --line: #f2f4f8;
+      --accent: #7d92ff;
+      --on-accent: #0f1524;
+      --danger: #ef6d8a;
+      --shadow: rgba(0, 0, 0, 0.5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121826;
+    --surface: #1a2233;
+    --ink: #e6eaf2;
+    --muted: #97a0b4;
+    --grid: #2a3448;
+    --zero: #56617a;
+    --good: #43c08f;
+    --bad: #ef6d8a;
+    --line: #f2f4f8;
+    --accent: #7d92ff;
+    --on-accent: #0f1524;
+    --danger: #ef6d8a;
+    --shadow: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: clamp(16px, 4vw, 40px);
+  }
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px 24px;
+    margin-bottom: 20px;
+  }
+  .title {
+    flex: 1 1 320px;
+    font: inherit;
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    border-bottom: 2px dashed transparent;
+    padding: 2px 0;
+    min-width: 0;
+  }
+  .title:hover { border-bottom-color: var(--grid); }
+  .title:focus { outline: none; border-bottom-color: var(--accent); }
+  .controls { display: flex; align-items: center; gap: 12px; }
+  .lock {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--grid);
+    cursor: pointer;
+    user-select: none;
+    font-weight: 600;
+  }
+  .lock input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; cursor: pointer; }
+  .lock:has(input:checked) { border-color: var(--accent); }
+  .lock:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--danger);
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--danger); color: var(--surface); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .board {
+    background: var(--surface);
+    border-radius: 20px;
+    border: 1px solid var(--grid);
+    padding: 12px;
+  }
+  .canvas-wrap { position: relative; height: clamp(300px, 62vh, 560px); }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  canvas.locked { cursor: default; }
+  canvas.locked.over-line { cursor: copy; }
+  canvas.locked.over-note { cursor: pointer; }
+  .axis-labels {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 4px 2px 56px;
+  }
+  .axis-labels input {
+    font: inherit;
+    font-size: 0.95rem;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-bottom: 1px dashed transparent;
+    width: 12em;
+    max-width: 45%;
+    padding: 2px 0;
+  }
+  .axis-labels input:last-child { text-align: right; }
+  .axis-labels input:hover { border-bottom-color: var(--grid); }
+  .axis-labels input:focus { outline: none; border-bottom-color: var(--accent); color: var(--ink); }
+  .status { margin: 14px 4px 0; color: var(--muted); font-size: 0.95rem; min-height: 1.5em; }
+
+  /* Note editor popover */
+  .note-editor {
+    position: absolute;
+    width: min(280px, calc(100% - 16px));
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 10px 30px var(--shadow);
+    z-index: 5;
+  }
+  .note-editor[hidden] { display: none; }
+  .note-editor h2 { margin: 0 0 8px; font-size: 1rem; font-weight: 600; }
+  .note-editor textarea {
+    width: 100%;
+    min-height: 84px;
+    resize: vertical;
+    font: inherit;
+    font-size: 0.95rem;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--grid);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .note-editor textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+  .note-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .note-actions .spacer { flex: 1; }
+  .note-actions button { padding: 6px 12px; font-size: 0.9rem; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); filter: brightness(1.08); }
+  .btn-quiet { border-color: var(--grid); color: var(--ink); }
+  .btn-quiet:hover:not(:disabled) { background: var(--bg); color: var(--ink); }
+  .note-editor .hint { margin: 8px 0 0; font-size: 0.8rem; color: var(--muted); }
+
+  /* Notes list */
+  .notes { margin-top: 28px; }
+  .notes[hidden] { display: none; }
+  .notes h2 { font-size: 1.25rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.01em; }
+  .notes ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .note-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    width: 100%;
+    text-align: left;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--grid);
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 400;
+  }
+  .note-item:disabled { opacity: 1; cursor: default; }
+  .note-item:hover:not(:disabled) { background: var(--surface); color: var(--ink); border-color: var(--accent); }
+  .note-num {
+    flex: none;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 0.8rem; font-weight: 700;
+    background: var(--accent); color: var(--on-accent);
+  }
+  .note-mood { flex: none; font-size: 1.1rem; line-height: 26px; }
+  .note-text { white-space: pre-wrap; overflow-wrap: anywhere; padding-top: 2px; }
+  @media (max-width: 520px) {
+    .controls { width: 100%; justify-content: space-between; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <input class="title" id="title" type="text" value="Sprint retro" aria-label="Retro title" spellcheck="false">
+    <div class="controls">
+      <label class="lock">
+        <input type="checkbox" id="lock">
+        Lock graph
+      </label>
+      <button type="button" id="clear">Delete line</button>
+    </div>
+  </div>
+
+  <div class="board">
+    <div class="canvas-wrap" id="wrap">
+      <canvas id="chart" role="img" aria-label="Mood graph. Press and drag across the chart to draw how the period felt. Lock the graph, then click the line to add notes."></canvas>
+      <div class="note-editor" id="editor" hidden role="dialog" aria-labelledby="editorTitle">
+        <h2 id="editorTitle">New note</h2>
+        <textarea id="noteText" placeholder="What happened here?" aria-label="Note text"></textarea>
+        <div class="note-actions">
+          <button type="button" class="btn-primary" id="noteSave">Save note</button>
+          <button type="button" class="btn-quiet" id="noteCancel">Cancel</button>
+          <span class="spacer"></span>
+          <button type="button" id="noteDelete">Delete note</button>
+        </div>
+        <p class="hint">Ctrl + Enter saves, Esc cancels.</p>
+      </div>
+    </div>
+    <div class="axis-labels">
+      <input id="startLabel" type="text" value="Sprint start" aria-label="Start label">
+      <input id="endLabel" type="text" value="Sprint end" aria-label="End label">
+    </div>
+  </div>
+
+  <p class="status" id="status"></p>
+
+  <section class="notes" id="notesSection" hidden>
+    <h2>Talking points</h2>
+    <ol id="notesList"></ol>
+  </section>
+</main>
+
+<script>
+(function () {
+  const N = 300;                       // horizontal resolution of the line
+  const STORE_KEY = "retro-mood-graph-v1";
+  const PAD = { left: 56, right: 18, top: 20, bottom: 20 };
+  const MARKER_R = 11;
+  const LINE_HIT = 22;                 // px distance that counts as clicking the line
+  const FACES = [
+    { v: 1,    e: "😄" },
+    { v: 0.5,  e: "🙂" },
+    { v: 0,    e: "😐" },
+    { v: -0.5, e: "🙁" },
+    { v: -1,   e: "😫" }
+  ];
+
+  const $ = id => document.getElementById(id);
+  const canvas = $("chart");
+  const ctx = canvas.getContext("2d");
+  const wrap = $("wrap");
+  const lockBox = $("lock");
+  const clearBtn = $("clear");
+  const statusEl = $("status");
+  const titleEl = $("title");
+  const startEl = $("startLabel");
+  const endEl = $("endLabel");
+  const editor = $("editor");
+  const editorTitle = $("editorTitle");
+  const noteText = $("noteText");
+  const noteSave = $("noteSave");
+  const noteCancel = $("noteCancel");
+  const noteDelete = $("noteDelete");
+  const notesSection = $("notesSection");
+  const notesList = $("notesList");
+
+  let values = new Array(N).fill(null);   // each entry: null or -1..1
+  let notes = [];                          // [{id, i, text}]
+  let drawing = false;
+  let last = null;
+  let W = 0, H = 0;
+  let editing = null;                      // {id|null, i}
+
+  // ---------- persistence ----------
+  function save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        values, notes, locked: lockBox.checked,
+        title: titleEl.value, start: startEl.value, end: endEl.value
+      }));
+    } catch (e) { /* storage unavailable: keep working in memory */ }
+  }
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (Array.isArray(d.values) && d.values.length === N) values = d.values;
+      if (Array.isArray(d.notes)) {
+        notes = d.notes.filter(n => n && Number.isInteger(n.i) && typeof n.text === "string");
+      }
+      lockBox.checked = !!d.locked;
+      if (typeof d.title === "string") titleEl.value = d.title;
+      if (typeof d.start === "string") startEl.value = d.start;
+      if (typeof d.end === "string") endEl.value = d.end;
+    } catch (e) { /* ignore bad or missing data */ }
+  }
+
+  // ---------- geometry ----------
+  const plotW = () => W - PAD.left - PAD.right;
+  const plotH = () => H - PAD.top - PAD.bottom;
+  const xOf = i => PAD.left + (i / (N - 1)) * plotW();
+  const yOf = v => PAD.top + (1 - (v + 1) / 2) * plotH();
+
+  function localPoint(ev) {
+    const r = canvas.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  }
+  function sampleFrom(p) {
+    let i = Math.round(((p.x - PAD.left) / plotW()) * (N - 1));
+    i = Math.max(0, Math.min(N - 1, i));
+    let v = 1 - ((p.y - PAD.top) / plotH()) * 2;
+    v = Math.max(-1, Math.min(1, v));
+    return { i, v };
+  }
+
+  // Where a note sits: on the line if there is one at that point, else on neutral.
+  const noteValue = n => (values[n.i] === null ? 0 : values[n.i]);
+  const sortedNotes = () => notes.slice().sort((a, b) => a.i - b.i);
+
+  function noteAt(p) {
+    let best = null, bestD = Infinity;
+    notes.forEach(n => {
+      const d = Math.hypot(p.x - xOf(n.i), p.y - yOf(noteValue(n)));
+      if (d <= MARKER_R + 4 && d < bestD) { best = n; bestD = d; }
+    });
+    return best;
+  }
+
+  // Closest point on the drawn line within LINE_HIT px, or null.
+  function lineAt(p) {
+    const centre = sampleFrom(p).i;
+    const reach = Math.ceil((LINE_HIT / Math.max(plotW(), 1)) * (N - 1)) + 1;
+    let best = null, bestD = Infinity;
+    for (let i = Math.max(0, centre - reach); i <= Math.min(N - 1, centre + reach); i++) {
+      if (values[i] === null) continue;
+      const d = Math.hypot(p.x - xOf(i), p.y - yOf(values[i]));
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return bestD <= LINE_HIT ? best : null;
+  }
+
+  // Fill every bucket between the previous sample and this one.
+  function paint(s) {
+    if (!last) {
+      values[s.i] = s.v;
+    } else {
+      const a = last, b = s;
+      const span = Math.abs(b.i - a.i);
+      if (span === 0) {
+        values[b.i] = b.v;
+      } else {
+        const step = b.i > a.i ? 1 : -1;
+        for (let k = 0; k <= span; k++) {
+          values[a.i + k * step] = a.v + (b.v - a.v) * (k / span);
+        }
+      }
+    }
+    last = s;
+  }
+
+  // ---------- rendering ----------
+  const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = wrap.clientWidth;
+    H = wrap.clientHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render();
+    if (editing) positionEditor();
+  }
+
+  function runs() {
+    const out = [];
+    let cur = null;
+    for (let i = 0; i < N; i++) {
+      if (values[i] === null) { if (cur) { out.push(cur); cur = null; } }
+      else { if (!cur) cur = []; cur.push(i); }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  function render() {
+    const c = {
+      grid: cssVar("--grid"), zero: cssVar("--zero"), muted: cssVar("--muted"),
+      good: cssVar("--good"), bad: cssVar("--bad"), line: cssVar("--line"),
+      accent: cssVar("--accent"), onAccent: cssVar("--on-accent"), surface: cssVar("--surface")
+    };
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid and mood faces
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "22px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif";
+    FACES.forEach(f => {
+      const y = yOf(f.v);
+      ctx.fillText(f.e, PAD.left / 2 - 2, y);
+      ctx.beginPath();
+      ctx.moveTo(PAD.left, y);
+      ctx.lineTo(W - PAD.right, y);
+      if (f.v === 0) { ctx.strokeStyle = c.zero; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
+      else { ctx.strokeStyle = c.grid; ctx.lineWidth = 1; ctx.setLineDash([4, 6]); }
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    const segs = runs();
+
+    if (segs.length === 0) {
+      ctx.fillStyle = c.muted;
+      ctx.font = "600 17px 'Bricolage Grotesque', system-ui, sans-serif";
+      ctx.fillText(
+        lockBox.checked ? "The graph is locked. Untick “Lock graph” to draw."
+                        : "Press and drag across the chart to draw how it felt.",
+        PAD.left + plotW() / 2, PAD.top + plotH() * 0.25
+      );
+    }
+
+    const zeroY = yOf(0);
+    segs.forEach(seg => {
+      const first = seg[0], lastI = seg[seg.length - 1];
+      const area = new Path2D();
+      area.moveTo(xOf(first), zeroY);
+      seg.forEach(i => area.lineTo(xOf(i), yOf(values[i])));
+      area.lineTo(xOf(lastI), zeroY);
+      area.closePath();
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W, zeroY); ctx.clip();
+      ctx.globalAlpha = 0.22; ctx.fillStyle = c.good; ctx.fill(area);
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, zeroY, W, H - zeroY); ctx.clip();
+      ctx.globalAlpha = 0.22; ctx.fillStyle = c.bad; ctx.fill(area);
+      ctx.restore();
+
+      if (seg.length === 1) {
+        ctx.beginPath();
+        ctx.arc(xOf(first), yOf(values[first]), 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = c.line; ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(xOf(first), yOf(values[first]));
+        seg.forEach(i => ctx.lineTo(xOf(i), yOf(values[i])));
+        ctx.strokeStyle = c.line;
+        ctx.lineWidth = 3.5;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+    });
+
+    // Pending marker for a note being created
+    if (editing && editing.id === null) {
+      const v = values[editing.i] === null ? 0 : values[editing.i];
+      ctx.beginPath();
+      ctx.arc(xOf(editing.i), yOf(v), MARKER_R, 0, Math.PI * 2);
+      ctx.fillStyle = c.surface; ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = c.accent;
+      ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // Note markers, numbered left to right
+    ctx.font = "700 12px 'Bricolage Grotesque', system-ui, sans-serif";
+    sortedNotes().forEach((n, idx) => {
+      const x = xOf(n.i), y = yOf(noteValue(n));
+      ctx.beginPath();
+      ctx.arc(x, y, MARKER_R + 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = c.surface; ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, MARKER_R, 0, Math.PI * 2);
+      ctx.fillStyle = c.accent; ctx.fill();
+      if (editing && editing.id === n.id) {
+        ctx.lineWidth = 2; ctx.strokeStyle = c.line; ctx.stroke();
+      }
+      ctx.fillStyle = c.onAccent;
+      ctx.fillText(String(idx + 1), x, y + 0.5);
+    });
+  }
+
+  // ---------- notes list ----------
+  function moodEmoji(v) {
+    let best = FACES[0];
+    FACES.forEach(f => { if (Math.abs(f.v - v) < Math.abs(best.v - v)) best = f; });
+    return best.e;
+  }
+
+  function renderNotesList() {
+    const list = sortedNotes();
+    notesSection.hidden = list.length === 0;
+    notesList.textContent = "";
+    list.forEach((n, idx) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "note-item";
+      btn.disabled = !lockBox.checked;
+      btn.title = lockBox.checked ? "Edit this note" : "Lock the graph to edit notes";
+
+      const num = document.createElement("span");
+      num.className = "note-num";
+      num.textContent = String(idx + 1);
+      const mood = document.createElement("span");
+      mood.className = "note-mood";
+      mood.textContent = moodEmoji(noteValue(n));
+      mood.setAttribute("aria-hidden", "true");
+      const text = document.createElement("span");
+      text.className = "note-text";
+      text.textContent = n.text;
+
+      btn.append(num, mood, text);
+      btn.addEventListener("click", () => { if (editing) commitEditor(); openEditor(n.id, n.i); });
+      li.appendChild(btn);
+      notesList.appendChild(li);
+    });
+  }
+
+  // ---------- note editor ----------
+  function positionEditor() {
+    const v = values[editing.i] === null ? 0 : values[editing.i];
+    const x = xOf(editing.i), y = yOf(v);
+    const ew = editor.offsetWidth, eh = editor.offsetHeight;
+    let left = x - ew / 2;
+    left = Math.max(8, Math.min(W - ew - 8, left));
+    let top = y + MARKER_R + 12;                       // below the point…
+    if (top + eh > H - 8) top = y - MARKER_R - 12 - eh; // …or above if no room
+    top = Math.max(8, top);
+    editor.style.left = left + "px";
+    editor.style.top = top + "px";
+  }
+
+  function openEditor(id, i) {
+    const existing = id ? notes.find(n => n.id === id) : null;
+    editing = { id: existing ? existing.id : null, i };
+    editorTitle.textContent = existing ? "Edit note" : "New note";
+    noteText.value = existing ? existing.text : "";
+    noteDelete.hidden = !existing;
+    editor.hidden = false;
+    positionEditor();
+    render();
+    noteText.focus();
+  }
+
+  function closeEditor() {
+    editing = null;
+    editor.hidden = true;
+    render();
+  }
+
+  function commitEditor() {
+    if (!editing) return;
+    const text = noteText.value.trim();
+    if (editing.id) {
+      const n = notes.find(n => n.id === editing.id);
+      if (n && text) n.text = text;
+      else if (n && !text) notes = notes.filter(x => x !== n);
+    } else if (text) {
+      notes.push({ id: "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), i: editing.i, text });
+    }
+    save();
+    closeEditor();
+    updateUI();
+  }
+
+  function deleteEditingNote() {
+    if (editing && editing.id) notes = notes.filter(n => n.id !== editing.id);
+    save();
+    closeEditor();
+    updateUI();
+  }
+
+  noteSave.addEventListener("click", commitEditor);
+  noteCancel.addEventListener("click", closeEditor);
+  noteDelete.addEventListener("click", deleteEditingNote);
+  noteText.addEventListener("keydown", ev => {
+    if (ev.key === "Escape") { ev.preventDefault(); closeEditor(); }
+    if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); commitEditor(); }
+  });
+
+  // ---------- UI state ----------
+  const hasLine = () => values.some(v => v !== null);
+
+  function updateUI() {
+    const locked = lockBox.checked;
+    canvas.classList.toggle("locked", locked);
+    clearBtn.disabled = locked || (!hasLine() && notes.length === 0);
+    clearBtn.textContent = notes.length ? "Delete line and notes" : "Delete line";
+    if (locked) {
+      statusEl.textContent = hasLine()
+        ? "Locked. Click anywhere on the line to add a note, or click a numbered marker to edit it."
+        : "Locked. Drawing and deleting are turned off.";
+    } else {
+      statusEl.textContent = hasLine()
+        ? "Drag again over any part to redraw it. Tick “Lock graph” to add notes to the line."
+        : "";
+    }
+    renderNotesList();
+    render();
+  }
+
+  // ---------- canvas events ----------
+  canvas.addEventListener("pointerdown", ev => {
+    if (ev.button > 0) return;
+    const p = localPoint(ev);
+
+    if (lockBox.checked) {
+      if (editing) commitEditor();              // clicking away keeps what was typed
+      const hit = noteAt(p);
+      if (hit) { openEditor(hit.id, hit.i); return; }
+      const i = lineAt(p);
+      if (i !== null) openEditor(null, i);
+      return;
+    }
+
+    ev.preventDefault();
+    canvas.setPointerCapture(ev.pointerId);
+    drawing = true;
+    last = null;
+    paint(sampleFrom(p));
+    render();
+  });
+
+  canvas.addEventListener("pointermove", ev => {
+    if (drawing) {
+      const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [];
+      (evs.length ? evs : [ev]).forEach(e => paint(sampleFrom(localPoint(e))));
+      render();
+      return;
+    }
+    if (lockBox.checked) {
+      const p = localPoint(ev);
+      const overNote = !!noteAt(p);
+      canvas.classList.toggle("over-note", overNote);
+      canvas.classList.toggle("over-line", !overNote && lineAt(p) !== null);
+    }
+  });
+
+  canvas.addEventListener("pointerleave", () => {
+    canvas.classList.remove("over-note", "over-line");
+  });
+
+  function endDraw() {
+    if (!drawing) return;
+    drawing = false;
+    last = null;
+    save();
+    updateUI();
+  }
+  canvas.addEventListener("pointerup", endDraw);
+  canvas.addEventListener("pointercancel", endDraw);
+  canvas.addEventListener("lostpointercapture", endDraw);
+
+  lockBox.addEventListener("change", () => {
+    if (lockBox.checked) endDraw();
+    else if (editing) commitEditor();
+    canvas.classList.remove("over-note", "over-line");
+    save();
+    updateUI();
+  });
+
+  clearBtn.addEventListener("click", () => {
+    if (lockBox.checked) return;
+    values = new Array(N).fill(null);
+    notes = [];
+    save();
+    updateUI();
+  });
+
+  [titleEl, startEl, endEl].forEach(el => el.addEventListener("input", save));
+
+  new ResizeObserver(resize).observe(wrap);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+
+  load();
+  resize();
+  updateUI();
+})();
+</script>
+</body>
+</html>
