@@ -2,7 +2,7 @@
 
 A single-file web page for running an "emotional journey" retrospective. Each person draws a line showing how they felt over a sprint (or any period), locks it, and pins notes to the moments they want to talk about.
 
-There is no build step, no server and nothing to install. Everything lives in `retro-graph.html`.
+There is no build step, no server and nothing to install. Everything lives in `retro-emotional-graph.html`.
 
 ## Features
 
@@ -19,15 +19,15 @@ There is no build step, no server and nothing to install. Everything lives in `r
 
 ### Open it locally
 
-Download or clone the repo and open `retro-graph.html` in a browser. That's all.
+Download or clone the repo and open `retro-emotional-graph.html` in a browser. That's all.
 
 ### Host it with GitHub Pages
 
 1. In the repo, go to **Settings → Pages**.
 2. Under **Build and deployment**, set the source to **Deploy from a branch**, choose `main` and the `/ (root)` folder, then save.
-3. After a minute or so the page is available at `https://<your-user-or-org>.github.io/<repo-name>/retro-graph.html`.
+3. After a minute or so the page is available at `https://<your-user-or-org>.github.io/<repo-name>/retro-emotional-graph.html`.
 
-If you'd like the page at the root URL instead, rename `retro-graph.html` to `index.html`.
+If you'd like the page at the root URL instead, rename `retro-emotional-graph.html` to `index.html`.
 
 ### Running a retro with it
 
