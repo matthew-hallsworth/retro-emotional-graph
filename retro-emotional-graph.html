@@ -22,6 +22,7 @@
     --on-accent: #ffffff;
     --danger: #c23a58;
     --shadow: rgba(20, 30, 60, 0.18);
+    --crosshair: rgba(31, 42, 68, 0.4);
     color-scheme: light;
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
@@ -42,6 +43,7 @@
       --on-accent: #0f1524;
       --danger: #ef6d8a;
       --shadow: rgba(0, 0, 0, 0.5);
+      --crosshair: rgba(255, 255, 255, 0.4);
       color-scheme: dark;
     }
   }
@@ -59,6 +61,7 @@
     --on-accent: #0f1524;
     --danger: #ef6d8a;
     --shadow: rgba(0, 0, 0, 0.5);
+    --crosshair: rgba(255, 255, 255, 0.4);
     color-scheme: dark;
   }
   html { scroll-padding-top: env(safe-area-inset-top, 0px); }
@@ -246,7 +249,7 @@
     z-index: 10;
   }
   .settings-menu[hidden] { display: none; }
-  .settings-menu label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .settings-menu label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
   .settings-menu input {
     width: 100%;
     font: inherit;
@@ -258,6 +261,14 @@
   }
   .settings-menu input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
   .settings-menu .hint { margin: 8px 0 0; font-size: 0.8rem; color: var(--muted); }
+  .settings-menu .settings-group { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); }
+  .settings-menu h3 { margin: 0 0 8px; font-size: 1rem; font-weight: 700; }
+  .settings-menu h3 + .hint { margin: -6px 0 8px; }
+  .settings-menu .settings-check { display: flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; }
+  .settings-menu .settings-check input {
+    width: 18px; height: 18px; padding: 0; margin: 0; flex: none;
+    accent-color: var(--accent); cursor: pointer;
+  }
 
   /* Notes list */
   .notes { margin-top: 28px; }
@@ -314,9 +325,22 @@
         </svg>
       </button>
       <div class="settings-menu" id="settingsMenu" hidden role="dialog" aria-label="Settings">
+        <h3>Graph Configuration</h3>
         <label for="sectionsInput">Number of sections</label>
         <input type="number" id="sectionsInput" min="1" max="50" step="1" value="1" inputmode="numeric">
         <p class="hint">Splits the timeline into evenly spaced sections (1–50).</p>
+        <div class="settings-group" role="group" aria-labelledby="presentHeading">
+          <h3 id="presentHeading">Presentation Mode</h3>
+          <p class="hint">Shown while the graph is locked.</p>
+          <label class="settings-check">
+            <input type="checkbox" id="optCrosshair">
+            Axis lines at cursor
+          </label>
+          <label class="settings-check">
+            <input type="checkbox" id="optHighlight">
+            Highlight up to cursor
+          </label>
+        </div>
       </div>
     </div>
   </div>
@@ -368,6 +392,8 @@
   // Full searchable emoji picker, loaded from the CDN only when first opened.
   const EMOJI_PICKER_SRC = "https://cdn.jsdelivr.net/npm/emoji-picker-element@1.29.1/index.js";
   const MAX_SECTIONS = 50;             // upper limit for vertical sections
+  const FILL_ALPHA = 0.22;             // mood fill opacity (right of the cursor when highlighting)
+  const HIGHLIGHT_ALPHA = 0.61;        // mood fill opacity left of the cursor when highlighting
   const FACES = [
     { v: 1,    e: "😄" },
     { v: 0.5,  e: "🙂" },
@@ -400,6 +426,8 @@
   const settingsBtn = $("settingsBtn");
   const settingsMenu = $("settingsMenu");
   const sectionsInput = $("sectionsInput");
+  const crosshairBox = $("optCrosshair");
+  const highlightBox = $("optHighlight");
 
   let values = new Array(N).fill(null);   // each entry: null or -1..1
   let notes = [];                          // [{id, i, text, emoji?}]
@@ -408,12 +436,14 @@
   let W = 0, H = 0;
   let editing = null;                      // {id|null, i}
   let sections = 1;                        // evenly spaced timeline sections (sections - 1 dividers)
+  let hover = null;                        // cursor {x, y} over the canvas, or null
 
   // ---------- persistence ----------
   function save() {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         values, notes, sections, locked: lockBox.checked,
+        crosshair: crosshairBox.checked, highlight: highlightBox.checked,
         title: titleEl.value, start: startEl.value, end: endEl.value
       }));
     } catch (e) { /* storage unavailable: keep working in memory */ }
@@ -429,6 +459,8 @@
       }
       if (isValidSections(d.sections)) sections = d.sections;
       lockBox.checked = !!d.locked;
+      crosshairBox.checked = !!d.crosshair;
+      highlightBox.checked = !!d.highlight;
       if (typeof d.title === "string") titleEl.value = d.title;
       if (typeof d.start === "string") startEl.value = d.start;
       if (typeof d.end === "string") endEl.value = d.end;
@@ -540,11 +572,29 @@
     return out;
   }
 
+  // Presenting aids only apply while locked and the cursor is over the chart.
+  const presentHover = () => (lockBox.checked && !drawing ? hover : null);
+
+  // Fill the part of `area` between y0 and y1. With "Highlight up to cursor" on,
+  // it is stronger left of the cursor and faint to its right; otherwise faint throughout.
+  function fillBand(area, color, y0, y1) {
+    const h = presentHover();
+    const splitX = h && highlightBox.checked ? h.x : 0;
+    [[0, splitX, HIGHLIGHT_ALPHA], [splitX, W, FILL_ALPHA]].forEach(([x0, x1, alpha]) => {
+      if (x1 <= x0) return;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+      ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.fill(area);
+      ctx.restore();
+    });
+  }
+
   function render() {
     const c = {
       grid: cssVar("--grid"), zero: cssVar("--zero"), muted: cssVar("--muted"),
       good: cssVar("--good"), bad: cssVar("--bad"), line: cssVar("--line"),
-      accent: cssVar("--accent"), onAccent: cssVar("--on-accent"), surface: cssVar("--surface")
+      accent: cssVar("--accent"), onAccent: cssVar("--on-accent"), surface: cssVar("--surface"),
+      crosshair: cssVar("--crosshair")
     };
     ctx.clearRect(0, 0, W, H);
 
@@ -597,15 +647,8 @@
       area.lineTo(xOf(lastI), zeroY);
       area.closePath();
 
-      ctx.save();
-      ctx.beginPath(); ctx.rect(0, 0, W, zeroY); ctx.clip();
-      ctx.globalAlpha = 0.22; ctx.fillStyle = c.good; ctx.fill(area);
-      ctx.restore();
-
-      ctx.save();
-      ctx.beginPath(); ctx.rect(0, zeroY, W, H - zeroY); ctx.clip();
-      ctx.globalAlpha = 0.22; ctx.fillStyle = c.bad; ctx.fill(area);
-      ctx.restore();
+      fillBand(area, c.good, 0, zeroY);
+      fillBand(area, c.bad, zeroY, H);
 
       if (seg.length === 1) {
         ctx.beginPath();
@@ -622,6 +665,23 @@
         ctx.stroke();
       }
     });
+
+    // Dashed axis lines: vertical at the cursor, horizontal at the drawn line's
+    // height there (left out where nothing has been drawn)
+    const h = presentHover();
+    if (h && crosshairBox.checked) {
+      const x = Math.max(PAD.left, Math.min(W - PAD.right, h.x));
+      const v = values[sampleFrom(h).i];
+      ctx.beginPath();
+      ctx.moveTo(x, PAD.top); ctx.lineTo(x, H - PAD.bottom);
+      if (v !== null) { ctx.moveTo(PAD.left, yOf(v)); ctx.lineTo(W - PAD.right, yOf(v)); }
+      ctx.strokeStyle = c.crosshair;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = "butt";
+      ctx.setLineDash([4, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     // Pending marker for a note being created
     if (editing && editing.id === null) {
@@ -887,6 +947,7 @@
   });
 
   canvas.addEventListener("pointermove", ev => {
+    hover = localPoint(ev);
     if (drawing) {
       const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [];
       (evs.length ? evs : [ev]).forEach(e => paint(sampleFrom(localPoint(e))));
@@ -894,15 +955,17 @@
       return;
     }
     if (lockBox.checked) {
-      const p = localPoint(ev);
-      const overNote = !!noteAt(p);
+      const overNote = !!noteAt(hover);
       canvas.classList.toggle("over-note", overNote);
-      canvas.classList.toggle("over-line", !overNote && lineAt(p) !== null);
+      canvas.classList.toggle("over-line", !overNote && lineAt(hover) !== null);
+      if (crosshairBox.checked || highlightBox.checked) render();
     }
   });
 
   canvas.addEventListener("pointerleave", () => {
     canvas.classList.remove("over-note", "over-line");
+    hover = null;
+    if (lockBox.checked) render();
   });
 
   // The mousedown that follows pointerdown would move focus off the editor's textarea.
@@ -970,6 +1033,13 @@
   sectionsInput.addEventListener("change", () => { sectionsInput.value = String(sections); });
   sectionsInput.addEventListener("keydown", ev => {
     if (ev.key === "Enter" || ev.key === "Escape") { ev.preventDefault(); closeSettings(true); }
+  });
+
+  [crosshairBox, highlightBox].forEach(box => {
+    box.addEventListener("change", () => { save(); render(); });
+    box.addEventListener("keydown", ev => {
+      if (ev.key === "Escape") { ev.preventDefault(); closeSettings(true); }
+    });
   });
 
   document.addEventListener("pointerdown", ev => {
